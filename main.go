@@ -11,16 +11,29 @@ import (
 	"time"
 
 	"github.com/tenebris-tech/mcp-sniffer/blecap"
+	"github.com/tenebris-tech/mcp-sniffer/bledev"
 	"github.com/tenebris-tech/mcp-sniffer/blepdu"
 )
 
 const defaultCaptureSecs = 30
 
 func main() {
+	deviceFlag   := flag.String("device", "", "serial port path (auto-detected if empty)")
 	filterFlag   := flag.String("filter", "", "comma-separated BLE addresses or OUI prefixes (e.g. \"AA:BB:CC:DD:EE:FF,50:32:5F\")")
 	followFlag   := flag.String("follow", "", "single BLE address for hardware follow mode")
 	durationFlag := flag.Int("duration", defaultCaptureSecs, "capture duration in seconds")
 	flag.Parse()
+
+	device := *deviceFlag
+	if device == "" {
+		var err error
+		device, err = bledev.Find()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "detected sniffer at %s\n", device)
+	}
 
 	var filterAddrs []string
 	if *filterFlag != "" {
@@ -32,6 +45,7 @@ func main() {
 	}
 
 	cap, err := blecap.New(
+		blecap.WithDevice(device),
 		blecap.WithFilter(filterAddrs),
 		blecap.WithFollow(*followFlag),
 		blecap.WithAutoTune(),
