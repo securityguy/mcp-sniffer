@@ -7,7 +7,7 @@ Nordic nRF52840-MDK USB dongle and Nordic sniffer firmware.
 
 - **Dongle**: Nordic nRF52840-MDK (or compatible nRF52840 USB dongle)
 - **Firmware**: Nordic BLE Sniffer firmware v4.1.1
-- **Host OS**: macOS (Darwin) — serial port code in `sniffer/port_darwin.go`
+- **Host OS**: macOS and Linux — serial port code in `sniffer/port_darwin.go` / `sniffer/port_linux.go`
 - **Default port**: `/dev/cu.usbmodem2101`
 - **Baud rate**: 1,000,000
 
@@ -44,6 +44,35 @@ go run . --filter 04:E3:E5:AF:EE:C0 --duration 60
 # Follow a device into a BLE connection (captures DATA_PDUs)
 go run . --follow AA:BB:CC:DD:EE:FF
 ```
+
+## Linux: Serial Port Permissions
+
+On Linux the dongle appears as `/dev/ttyACM*`. By default this device is
+owned by `root:dialout` and not accessible to normal users.
+
+### One-time setup
+
+**1. Add a udev rule** so the device gets group-readable permissions
+automatically when plugged in:
+
+```sh
+sudo tee /etc/udev/rules.d/99-nordic-sniffer.rules <<'EOF'
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1915", MODE="0660", GROUP="dialout"
+EOF
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+**2. Add your user to the `dialout` group:**
+
+```sh
+sudo usermod -aG dialout $USER
+```
+
+Log out and back in (or run `newgrp dialout` in the current shell) for the
+group membership to take effect.
+
+After this, the sniffer can be run without `sudo`.
 
 ## Package Architecture
 
