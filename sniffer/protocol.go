@@ -1,3 +1,8 @@
+/******************************************************************************
+ * Copyright (c) 2026 Tenebris Technologies Inc.                              *
+ * Please see LICENSE file for details.                                       *
+ ******************************************************************************/
+
 // Package sniffer implements communication with the Nordic nRF BLE sniffer firmware.
 package sniffer
 
@@ -46,7 +51,7 @@ const (
 	ScanFlagScanRsp  byte = 1 << 0 // forward SCAN_RSP packets
 	ScanFlagExtAdv   byte = 1 << 1 // follow ADV_EXT_IND to secondary channels (BT5)
 	ScanFlagCodedPHY byte = 1 << 2 // scan Coded PHY advertising channels (BT5 long-range)
-	ScanFlagAll      byte = ScanFlagScanRsp | ScanFlagExtAdv
+	ScanFlagAll           = ScanFlagScanRsp | ScanFlagExtAdv
 )
 
 // DefaultDevice is the default serial port path for the nRF52840-MDK dongle.

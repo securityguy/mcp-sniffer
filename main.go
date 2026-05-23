@@ -1,3 +1,8 @@
+/******************************************************************************
+ * Copyright (c) 2026 Tenebris Technologies Inc.                              *
+ * Please see LICENSE file for details.                                       *
+ ******************************************************************************/
+
 package main
 
 import (
@@ -18,9 +23,9 @@ import (
 const defaultCaptureSecs = 30
 
 func main() {
-	deviceFlag   := flag.String("device", "", "serial port path (auto-detected if empty)")
-	filterFlag   := flag.String("filter", "", "comma-separated BLE addresses or OUI prefixes (e.g. \"AA:BB:CC:DD:EE:FF,50:32:5F\")")
-	followFlag   := flag.String("follow", "", "single BLE address for hardware follow mode")
+	deviceFlag := flag.String("device", "", "serial port path (auto-detected if empty)")
+	filterFlag := flag.String("filter", "", "comma-separated BLE addresses or OUI prefixes (e.g. \"AA:BB:CC:DD:EE:FF,50:32:5F\")")
+	followFlag := flag.String("follow", "", "single BLE address for hardware follow mode")
 	durationFlag := flag.Int("duration", defaultCaptureSecs, "capture duration in seconds")
 	flag.Parse()
 
@@ -29,10 +34,10 @@ func main() {
 		var err error
 		device, err = bledev.Find()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "detected sniffer at %s\n", device)
+		fmt.Printf("Detected sniffer at %s\n\n", device)
 	}
 
 	var filterAddrs []string
@@ -44,38 +49,38 @@ func main() {
 		}
 	}
 
-	cap, err := blecap.New(
+	capture, err := blecap.New(
 		blecap.WithDevice(device),
 		blecap.WithFilter(filterAddrs),
 		blecap.WithFollow(*followFlag),
 		blecap.WithAutoTune(),
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGHUP, syscall.SIGTERM)
 
-	if err := cap.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	if err = capture.Start(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	go printPackets(cap)
+	go printPackets(capture)
 
 	select {
 	case <-time.After(time.Duration(*durationFlag) * time.Second):
 	case sig := <-sigCh:
-		fmt.Fprintf(os.Stderr, "\nreceived %s, stopping...\n", sig)
+		_, _ = fmt.Fprintf(os.Stderr, "\nreceived %s, stopping...\n", sig)
 	}
 
-	if err := cap.Stop(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: stop: %v\n", err)
+	if err := capture.Stop(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "warning: stop: %v\n", err)
 	}
 
-	fmt.Printf("\nTotal packets captured: %d\n", cap.Count())
+	fmt.Printf("\nTotal packets captured: %d\n", capture.Count())
 }
 
 // printPackets polls the capture and prints any newly stored packets.

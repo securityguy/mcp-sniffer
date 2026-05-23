@@ -1,3 +1,8 @@
+/******************************************************************************
+ * Copyright (c) 2026 Tenebris Technologies Inc.                              *
+ * Please see LICENSE file for details.                                       *
+ ******************************************************************************/
+
 // Package blepdu parses BLE advertising PDU payloads from Nordic sniffer packets.
 package blepdu
 

@@ -1,3 +1,8 @@
+/******************************************************************************
+ * Copyright (c) 2026 Tenebris Technologies Inc.                              *
+ * Please see LICENSE file for details.                                       *
+ ******************************************************************************/
+
 // Package bledata processes and stores BLE advertising packets from the sniffer.
 package bledata
 

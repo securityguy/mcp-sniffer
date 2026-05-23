@@ -1,5 +1,10 @@
 //go:build !darwin && !linux
 
+/******************************************************************************
+ * Copyright (c) 2026 Tenebris Technologies Inc.                              *
+ * Please see LICENSE file for details.                                       *
+ ******************************************************************************/
+
 package bledev
 
 import "fmt"

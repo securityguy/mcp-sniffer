@@ -1,3 +1,8 @@
+/******************************************************************************
+ * Copyright (c) 2026 Tenebris Technologies Inc.                              *
+ * Please see LICENSE file for details.                                       *
+ ******************************************************************************/
+
 package sniffer
 
 import (
@@ -79,16 +84,22 @@ func WithScanFlags(flags byte) Option {
 }
 
 // WithoutScanRsp disables forwarding of SCAN_RSP packets.
+//
+//goland:noinspection GoUnusedExportedFunction,GoUnusedExportedFunction
 func WithoutScanRsp() Option {
 	return func(s *Sniffer) { s.scanFlags &^= ScanFlagScanRsp }
 }
 
 // WithoutExtendedAdv disables following ADV_EXT_IND to secondary channels (BT5).
+//
+//goland:noinspection GoUnusedExportedFunction,GoUnusedExportedFunction
 func WithoutExtendedAdv() Option {
 	return func(s *Sniffer) { s.scanFlags &^= ScanFlagExtAdv }
 }
 
 // WithoutCodedPHY disables scanning Coded PHY advertising channels (BT5 long-range).
+//
+//goland:noinspection GoUnusedExportedFunction,GoUnusedExportedFunction
 func WithoutCodedPHY() Option {
 	return func(s *Sniffer) { s.scanFlags &^= ScanFlagCodedPHY }
 }
@@ -331,7 +342,7 @@ func (s *Sniffer) readLoop() {
 			if !s.running.Load() {
 				return
 			}
-			fmt.Fprintf(os.Stderr, "sniffer: read error: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "sniffer: read error: %v\n", err)
 			return
 		}
 		if n == 0 {
@@ -362,7 +373,7 @@ func (s *Sniffer) readLoop() {
 			data := slipUnescape(frame)
 			pkt, err := parsePacket(data)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "sniffer: parse error (len=%d): %v\n", len(data), err)
+				_, _ = fmt.Fprintf(os.Stderr, "sniffer: parse error (len=%d): %v\n", len(data), err)
 				continue
 			}
 			// Non-blocking send; drop packet if channel is full.
@@ -408,6 +419,8 @@ func slipUnescape(data []byte) []byte {
 
 // parsePacket decodes the header of a SLIP-unescaped frame into a RawPacket.
 // Supports V1 (old firmware) and V3 (current firmware) header formats.
+//
+//goland:noinspection GoErrorStringFormat
 func parsePacket(data []byte) (RawPacket, error) {
 	if len(data) < 3 {
 		return RawPacket{}, fmt.Errorf("packet too short: %d bytes", len(data))

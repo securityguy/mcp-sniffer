@@ -1,3 +1,8 @@
+/******************************************************************************
+ * Copyright (c) 2026 Tenebris Technologies Inc.                              *
+ * Please see LICENSE file for details.                                       *
+ ******************************************************************************/
+
 // Package bledev locates the Nordic nRF52840-MDK sniffer USB serial device.
 package bledev
 
@@ -19,7 +24,7 @@ func Find() (string, error) {
 	path, err := findDevice()
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return "", fmt.Errorf("%w: is the nRF52840-MDK dongle plugged in?", ErrNotFound)
+			return "", fmt.Errorf("%w: Please confirm the nRF52840-MDK dongle is connected", ErrNotFound)
 		}
 		return "", err
 	}

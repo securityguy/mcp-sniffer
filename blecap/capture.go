@@ -1,3 +1,8 @@
+/******************************************************************************
+ * Copyright (c) 2026 Tenebris Technologies Inc.                              *
+ * Please see LICENSE file for details.                                       *
+ ******************************************************************************/
+
 // Package blecap provides a single high-level API for configuring and
 // running a BLE capture. It owns the sniffer and store internally so
 // callers do not need to coordinate between the two packages.
