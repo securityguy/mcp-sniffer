@@ -18,11 +18,16 @@ import (
 	"github.com/tenebris-tech/mcp-sniffer/blecap"
 	"github.com/tenebris-tech/mcp-sniffer/bledev"
 	"github.com/tenebris-tech/mcp-sniffer/blepdu"
+	"github.com/tenebris-tech/mcp-sniffer/global"
 )
 
 const defaultCaptureSecs = 30
 
 func main() {
+
+	fmt.Printf("\n%s version %s\n%s\n%s\n\n",
+		global.Name, global.Version, global.Copyright, global.License)
+
 	deviceFlag := flag.String("device", "", "serial port path (auto-detected if empty)")
 	filterFlag := flag.String("filter", "", "comma-separated BLE addresses or OUI prefixes (e.g. \"AA:BB:CC:DD:EE:FF,50:32:5F\")")
 	followFlag := flag.String("follow", "", "single BLE address for hardware follow mode")
