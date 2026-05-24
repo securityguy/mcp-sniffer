@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/tenebris-tech/mcp-sniffer/bledev"
 	"github.com/tenebris-tech/mcp-sniffer/blepdu"
 	"github.com/tenebris-tech/mcp-sniffer/global"
+	"github.com/tenebris-tech/mcp-sniffer/mcpserver"
 )
 
 const defaultCaptureSecs = 30
@@ -28,11 +30,20 @@ func main() {
 	fmt.Printf("\n%s version %s\n%s\n%s\n\n",
 		global.Name, global.Version, global.Copyright, global.License)
 
+	mcpFlag := flag.Bool("mcp", false, "run as MCP server on stdio")
 	deviceFlag := flag.String("device", "", "serial port path (auto-detected if empty)")
 	filterFlag := flag.String("filter", "", "comma-separated BLE addresses or OUI prefixes (e.g. \"AA:BB:CC:DD:EE:FF,50:32:5F\")")
 	followFlag := flag.String("follow", "", "single BLE address for hardware follow mode")
 	durationFlag := flag.Int("duration", defaultCaptureSecs, "capture duration in seconds")
 	flag.Parse()
+
+	if *mcpFlag {
+		if err := mcpserver.Run(context.Background()); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "mcp server error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	device := *deviceFlag
 	if device == "" {
