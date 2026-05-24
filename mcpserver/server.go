@@ -10,7 +10,9 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +33,12 @@ type captureSession struct {
 	startedAt time.Time
 	baseIndex int        // virtual "clear" point; packets before this index are hidden
 	stopTimer *time.Timer
+
+	// file writer — non-nil when output_file was requested
+	outputFile string
+	fileWriter *os.File
+	writerStop chan struct{}
+	writerDone chan struct{}
 }
 
 var (
@@ -44,19 +52,21 @@ var (
 
 // StartInput is the input schema for sniffer_start.
 type StartInput struct {
-	Device   string `json:"device,omitempty"   jsonschema:"description=Serial port path. Leave empty for auto-detection."`
-	Filter   string `json:"filter,omitempty"   jsonschema:"description=Comma-separated BLE addresses or OUI prefixes to capture (e.g. AA:BB:CC:DD:EE:FF or 04:E3). Empty captures all."`
-	Follow   string `json:"follow,omitempty"   jsonschema:"description=Single BLE address for hardware follow mode (captures DATA_PDUs during BLE connections)."`
-	Duration int    `json:"duration,omitempty" jsonschema:"description=Capture duration in seconds. 0 means run until sniffer_stop is called."`
+	Device     string `json:"device,omitempty"      jsonschema:"description=Serial port path. Leave empty for auto-detection."`
+	Filter     string `json:"filter,omitempty"      jsonschema:"description=Comma-separated BLE addresses or OUI prefixes to capture (e.g. AA:BB:CC:DD:EE:FF or 04:E3). Empty captures all."`
+	Follow     string `json:"follow,omitempty"      jsonschema:"description=Single BLE address for hardware follow mode (captures DATA_PDUs during BLE connections)."`
+	Duration   int    `json:"duration,omitempty"    jsonschema:"description=Capture duration in seconds. 0 means run until sniffer_stop is called."`
+	OutputFile string `json:"output_file,omitempty" jsonschema:"description=Optional file path to write captured packets to (created if missing, appended if existing). Uses the same format as CLI output."`
 }
 
 // StartOutput is the result of sniffer_start.
 type StartOutput struct {
-	Status  string `json:"status"`
-	Device  string `json:"device"`
-	Filter  string `json:"filter,omitempty"`
-	Follow  string `json:"follow,omitempty"`
-	Message string `json:"message,omitempty"`
+	Status     string `json:"status"`
+	Device     string `json:"device"`
+	Filter     string `json:"filter,omitempty"`
+	Follow     string `json:"follow,omitempty"`
+	OutputFile string `json:"output_file,omitempty"`
+	Message    string `json:"message,omitempty"`
 }
 
 // StopOutput is the result of sniffer_stop.
@@ -73,6 +83,7 @@ type StatusOutput struct {
 	Device      string `json:"device,omitempty"`
 	Filter      string `json:"filter,omitempty"`
 	Follow      string `json:"follow,omitempty"`
+	OutputFile  string `json:"output_file,omitempty"`
 	Elapsed     string `json:"elapsed,omitempty"`
 	StartedAt   string `json:"started_at,omitempty"`
 }
@@ -87,6 +98,17 @@ type SetFilterInput struct {
 type SetFilterOutput struct {
 	Status string `json:"status"`
 	Filter string `json:"filter"`
+}
+
+// SetFollowInput is the input schema for sniffer_set_follow.
+type SetFollowInput struct {
+	Address string `json:"address" jsonschema:"description=BLE address to follow for hardware follow mode. Empty string disables follow mode."`
+}
+
+// SetFollowOutput is the result of sniffer_set_follow.
+type SetFollowOutput struct {
+	Status string `json:"status"`
+	Follow string `json:"follow"`
 }
 
 // GetPacketsInput is the input schema for sniffer_get_packets.
@@ -179,6 +201,77 @@ func splitFilter(s string) []string {
 }
 
 // ---------------------------------------------------------------------------
+// File writer
+// ---------------------------------------------------------------------------
+
+// startFileWriter opens path in append+create mode and starts a goroutine that
+// writes packets in the same format as the CLI printPackets function.
+func (s *captureSession) startFileWriter(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("open output file %q: %w", path, err)
+	}
+	s.outputFile = path
+	s.fileWriter = f
+	s.writerStop = make(chan struct{})
+	s.writerDone = make(chan struct{})
+	go s.fileWriterLoop()
+	return nil
+}
+
+// fileWriterLoop polls for new packets and writes them to the output file.
+// It exits when writerStop is closed, performing a final drain before closing.
+func (s *captureSession) fileWriterLoop() {
+	defer close(s.writerDone)
+	offset := s.baseIndex
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.writerStop:
+			// Final drain: write any packets that arrived after the last tick.
+			s.writePacketsToFile(&offset)
+			_ = s.fileWriter.Close()
+			return
+		case <-ticker.C:
+			s.writePacketsToFile(&offset)
+		}
+	}
+}
+
+// writePacketsToFile writes packets starting at *offset to the output file,
+// advancing *offset by the number written.
+func (s *captureSession) writePacketsToFile(offset *int) {
+	pkts := s.cap.Get(*offset, 64)
+	for _, pkt := range pkts {
+		_, _ = fmt.Fprintf(s.fileWriter, "--- [%d] %s id=0x%02X at=%s\n",
+			pkt.Index, blecap.PDUTypeName(pkt), pkt.ID, pkt.ReceivedAt.Format(time.RFC3339Nano))
+		roles := blepdu.AddressRoles(pkt.ID, pkt.Raw)
+		for i, addr := range pkt.Addresses {
+			role := "addr"
+			if i < len(roles) {
+				role = roles[i]
+			}
+			_, _ = fmt.Fprintf(s.fileWriter, "    %-8s %s\n", role+":", addr)
+		}
+		if len(pkt.Raw) > 0 {
+			_, _ = fmt.Fprint(s.fileWriter, hex.Dump(pkt.Raw))
+		}
+	}
+	*offset += len(pkts)
+}
+
+// stopFileWriter signals the writer goroutine to drain and exit, then waits
+// for it to complete. It is a no-op when no writer is running.
+func (s *captureSession) stopFileWriter() {
+	if s.writerStop == nil {
+		return
+	}
+	close(s.writerStop)
+	<-s.writerDone
+}
+
+// ---------------------------------------------------------------------------
 // Tool handlers
 // ---------------------------------------------------------------------------
 
@@ -226,11 +319,20 @@ func startCapture(_ context.Context, _ *mcp.CallToolRequest, input StartInput) (
 		follow:    input.Follow,
 		startedAt: time.Now(),
 	}
+
+	if input.OutputFile != "" {
+		if err := s.startFileWriter(input.OutputFile); err != nil {
+			_ = cap.Stop()
+			return nil, StartOutput{}, err
+		}
+	}
+
 	if input.Duration > 0 {
 		s.stopTimer = time.AfterFunc(time.Duration(input.Duration)*time.Second, func() {
 			sessMu.Lock()
 			defer sessMu.Unlock()
 			if sess == s {
+				s.stopFileWriter()
 				_ = s.cap.Stop()
 				sess = nil
 			}
@@ -239,11 +341,12 @@ func startCapture(_ context.Context, _ *mcp.CallToolRequest, input StartInput) (
 	sess = s
 
 	out := StartOutput{
-		Status:  "started",
-		Device:  device,
-		Filter:  input.Filter,
-		Follow:  input.Follow,
-		Message: "BLE capture started",
+		Status:     "started",
+		Device:     device,
+		Filter:     input.Filter,
+		Follow:     input.Follow,
+		OutputFile: s.outputFile,
+		Message:    "BLE capture started",
 	}
 	if input.Duration > 0 {
 		out.Message = fmt.Sprintf("BLE capture started; will auto-stop after %d seconds", input.Duration)
@@ -267,9 +370,13 @@ func stopCapture(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToo
 	count := sess.cap.Count() - sess.baseIndex
 	elapsed := time.Since(sess.startedAt)
 
-	if err := sess.cap.Stop(); err != nil {
-		// Non-fatal: record the error in the message but still clean up.
-		sess = nil
+	// Stop the capture first so no new packets arrive, then drain the writer.
+	stopErr := sess.cap.Stop()
+	sess.stopFileWriter()
+
+	sess = nil
+
+	if stopErr != nil {
 		return nil, StopOutput{
 			Status:          "stopped_with_error",
 			PacketsCaptured: count,
@@ -277,7 +384,6 @@ func stopCapture(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToo
 		}, nil
 	}
 
-	sess = nil
 	return nil, StopOutput{
 		Status:          "stopped",
 		PacketsCaptured: count,
@@ -300,6 +406,7 @@ func captureStatus(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallT
 		Device:      sess.device,
 		Filter:      sess.filter,
 		Follow:      sess.follow,
+		OutputFile:  sess.outputFile,
 		Elapsed:     time.Since(sess.startedAt).Round(time.Millisecond).String(),
 		StartedAt:   sess.startedAt.Format(time.RFC3339),
 	}, nil
@@ -327,6 +434,26 @@ func setFilter(_ context.Context, _ *mcp.CallToolRequest, input SetFilterInput) 
 	return nil, SetFilterOutput{
 		Status: "ok",
 		Filter: input.Addresses,
+	}, nil
+}
+
+// setFollow implements the sniffer_set_follow tool.
+func setFollow(_ context.Context, _ *mcp.CallToolRequest, input SetFollowInput) (*mcp.CallToolResult, SetFollowOutput, error) {
+	sessMu.Lock()
+	defer sessMu.Unlock()
+
+	if sess == nil {
+		return nil, SetFollowOutput{}, fmt.Errorf("no capture running; start one with sniffer_start first")
+	}
+
+	if err := sess.cap.SetFollow(input.Address); err != nil {
+		return nil, SetFollowOutput{}, fmt.Errorf("set follow: %w", err)
+	}
+	sess.follow = input.Address
+
+	return nil, SetFollowOutput{
+		Status: "ok",
+		Follow: input.Address,
 	}, nil
 }
 
@@ -460,23 +587,28 @@ func Run(ctx context.Context) error {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "sniffer_start",
-		Description: "Start a BLE advertising packet capture. Auto-detects the Nordic nRF52840-MDK dongle if device is not specified.",
+		Description: "Start a BLE advertising packet capture. Auto-detects the Nordic nRF52840-MDK dongle if device is not specified. Optionally writes all packets to a file.",
 	}, startCapture)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "sniffer_stop",
-		Description: "Stop the current capture and return a packet count summary.",
+		Description: "Stop the current capture. If an output file is open, flushes any remaining packets and closes it before returning.",
 	}, stopCapture)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "sniffer_status",
-		Description: "Return the current capture status including packet count, device, and elapsed time.",
+		Description: "Return the current capture status including packet count, device, elapsed time, and output file path.",
 	}, captureStatus)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "sniffer_set_filter",
 		Description: "Update the BLE address filter while a capture is running. Optionally discard previously captured packets.",
 	}, setFilter)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "sniffer_set_follow",
+		Description: "Change the hardware follow target on a running capture. Pass an empty address to disable follow mode.",
+	}, setFollow)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "sniffer_get_packets",

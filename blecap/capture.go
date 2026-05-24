@@ -198,5 +198,9 @@ func (c *Capture) Count() int { return c.store.Count() }
 // SetFilter replaces the current address filter atomically.
 func (c *Capture) SetFilter(addrs []string) error { return c.store.SetFilter(addrs) }
 
+// SetFollow sends a new hardware follow command to the sniffer. Pass an empty
+// string to clear follow mode (the firmware will revert to passive scanning).
+func (c *Capture) SetFollow(addr string) error { return c.snif.Follow(addr) }
+
 // PDUTypeName returns a human-readable PDU type label for a packet.
 func PDUTypeName(pkt bledata.Packet) string { return blepdu.PDUTypeName(pkt.ID, pkt.Raw) }
