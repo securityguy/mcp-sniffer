@@ -164,6 +164,10 @@ func (c *Capture) Stop() error {
 
 // autoTuneLoop waits for the observation period then disables any scan
 // capabilities not seen in traffic from the filtered addresses.
+//
+// Auto-tune is suppressed when follow mode is active because sending a new
+// REQ_SCAN_CONT resets the firmware's follow state, causing DATA_PDUs to be
+// missed after a connection is established.
 func (c *Capture) autoTuneLoop() {
 	defer c.wg.Done()
 	select {
@@ -171,7 +175,7 @@ func (c *Capture) autoTuneLoop() {
 	case <-c.stopTuneCh:
 		return
 	}
-	if !c.store.FilterActive() {
+	if !c.store.FilterActive() || c.followAddr != "" {
 		return
 	}
 	current := c.snif.ScanFlags()
