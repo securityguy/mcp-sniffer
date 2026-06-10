@@ -240,7 +240,7 @@ mcp-sniffer/
 - Serial port management (macOS: IOSSIOSPEED, TIOCEXCL, VMIN=0/VTIME=1)
 - Startup sequence: SET_ADV_CHANNEL_HOP_SEQ → REQ_VERSION → REQ_PING → REQ_TIMESTAMP → REQ_SCAN_CONT → SET_TEMPORARY_KEY
 - `UpdateScanFlags` for runtime scan flag changes
-- `Follow` for hardware follow mode (REQ_FOLLOW command)
+- `Follow` for hardware follow mode — sends REQ_FOLLOW with address **LSB-first** (see protocol notes below)
 
 **`bledata`** — Packet storage and filtering:
 - Consumes `sniffer.RawPacket` from a channel
@@ -261,6 +261,28 @@ mcp-sniffer/
 
 ## Nordic Sniffer Protocol
 
+### REQ_FOLLOW Payload
+
+```
+[0-5]  BD_ADDR — device address, byte 0 is LSB (reversed from human-readable)
+[6]    ADDRESS_TYPE — 0=public, 1=random
+[7]    FULL_FOLLOW — 0=capture full connection, 1=advertising only
+```
+
+**Address byte order is LSB-first.** For address `04:E3:E5:B0:87:05` the
+payload bytes are `05 87 B0 E5 E3 04`. Sending in MSB-first (human-readable)
+order causes the firmware to silently follow the wrong device — it captures one
+advertising packet at startup then goes silent.
+
+**Follow mode suppresses ADV_IND delivery.** Once follow mode is active, the
+firmware forwards very few advertising packets from the target; it is primarily
+waiting for a CONNECT_IND. Do not use `--follow` if you only want advertising
+payload — `--filter` alone is sufficient and delivers all packets normally.
+
+**REQ_SCAN_CONT resets follow state.** Sending REQ_SCAN_CONT while in follow
+mode causes the firmware to exit follow mode. The auto-tune feature in
+`blecap` is suppressed when follow is active to prevent this.
+
 ### Scan Flags (REQ_SCAN_CONT payload byte)
 
 | Bit | Constant | Effect |
@@ -276,6 +298,7 @@ v4.1.1 silently stops scanning when that bit is set.
 
 | ID | Constant | Direction |
 |----|----------|-----------|
+| 0x00 | `reqFollow` | Host → device: follow a specific BLE device |
 | 0x02 | `EventPacketAdvPDU` | Device → host: BLE advertising PDU |
 | 0x06 | `EventPacketDataPDU` | Device → host: BLE data PDU (follow mode) |
 | 0x07 | `ReqScanCont` | Host → device: start continuous scanning |

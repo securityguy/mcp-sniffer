@@ -33,11 +33,22 @@ blecap → bledata → blepdu
 - `blepdu`: PDU type/address decoding (no I/O)
 - `blecap`: wires sniffer+store into a single lifecycle object; used by main.go
 
-## Critical firmware gotcha
+## Critical firmware gotchas
 
 **Never set `ScanFlagCodedPHY` (bit 2 = 0x04) in REQ_SCAN_CONT.** Firmware
 v4.1.1 silently stops scanning when that flag is set. `ScanFlagAll = 0x03`
 (ScanRsp + ExtAdv only). This was the root cause of a 0-packets bug.
+
+**REQ_FOLLOW address is LSB-first.** The 6-byte address in the REQ_FOLLOW
+payload must be sent in the same byte order as BLE air packets (LSB-first),
+not in human-readable MSB-first order. For `04:E3:E5:B0:87:05` the payload
+bytes are `05 87 B0 E5 E3 04`. Sending MSB-first causes the firmware to wait
+for the bit-reversed address and never follow the target. This manifests as a
+single ADV_IND at capture start (before follow takes effect) and then silence.
+
+**REQ_SCAN_CONT resets follow state.** Sending REQ_SCAN_CONT while in follow
+mode causes the firmware to exit follow mode. Auto-tune must be suppressed when
+`--follow` is active (already fixed in `blecap/capture.go`).
 
 ## Serial port (macOS)
 
