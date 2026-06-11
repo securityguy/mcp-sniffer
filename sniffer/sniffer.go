@@ -251,10 +251,10 @@ func (s *Sniffer) Follow(addr string) error {
 		return fmt.Errorf("follow: %w", err)
 	}
 
-	// Payload: 6 address bytes LSB-first (as transmitted OTA) + addrType + 0x00 = 8 bytes.
-	// The firmware compares this against the AdvA field in received BLE packets,
-	// which is also LSB-first, so the human-readable address must be reversed.
-	payload := []byte{b[5], b[4], b[3], b[2], b[1], b[0], addrType, 0x00}
+	// Payload: 6 address bytes MSB-first (human-readable order) + addrType + 0x00 = 8 bytes.
+	// Nordic SnifferAPI reverses OTA (LSB-first) bytes to MSB-first before sending REQ_FOLLOW,
+	// so the firmware expects MSB-first order.
+	payload := []byte{b[0], b[1], b[2], b[3], b[4], b[5], addrType, 0x00}
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()

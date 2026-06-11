@@ -264,20 +264,19 @@ mcp-sniffer/
 ### REQ_FOLLOW Payload
 
 ```
-[0-5]  BD_ADDR — device address, byte 0 is LSB (reversed from human-readable)
+[0-5]  BD_ADDR — device address in MSB-first (human-readable) order
 [6]    ADDRESS_TYPE — 0=public, 1=random
 [7]    FULL_FOLLOW — 0=capture full connection, 1=advertising only
 ```
 
-**Address byte order is LSB-first.** For address `04:E3:E5:B0:87:05` the
-payload bytes are `05 87 B0 E5 E3 04`. Sending in MSB-first (human-readable)
-order causes the firmware to silently follow the wrong device — it captures one
-advertising packet at startup then goes silent.
+**Address byte order is MSB-first.** The Nordic SnifferAPI reverses OTA bytes
+(LSB-first) to human-readable order before sending, so the firmware expects
+`04 E3 E5 B0 87 05` for address `04:E3:E5:B0:87:05`.
 
 **Follow mode suppresses ADV_IND delivery.** Once follow mode is active, the
-firmware forwards very few advertising packets from the target; it is primarily
-waiting for a CONNECT_IND. Do not use `--follow` if you only want advertising
-payload — `--filter` alone is sufficient and delivers all packets normally.
+firmware delivers very few advertising packets from the target; it is primarily
+watching for CONNECT_IND. Do not use `--follow` for advertising-payload captures
+— `--filter` alone delivers all packets normally.
 
 **REQ_SCAN_CONT resets follow state.** Sending REQ_SCAN_CONT while in follow
 mode causes the firmware to exit follow mode. The auto-tune feature in
