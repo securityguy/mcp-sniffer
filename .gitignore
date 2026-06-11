@@ -1,5 +1,6 @@
 *.py
 .idea/
+.claude/
 private/
 .DS_Store
 mcp-sniffer
